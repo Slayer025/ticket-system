@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 128
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME:
+          Ref: TicketTable
+  Api:
+    Cors:
+      AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
+      AllowHeaders: '''Content-Type'''
+      AllowOrigin: '''*'''
+Resources:
+  TicketTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TicketSystem
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      AttributeDefinitions:
+      - AttributeName: PK
+        AttributeType: S
+      - AttributeName: SK
+        AttributeType: S
+      - AttributeName: status
+        AttributeType: S
+      - AttributeName: sla_state
+        AttributeType: S
+      - AttributeName: sla_due_at
+        AttributeType: S
+      KeySchema:
+      - AttributeName: PK
+        KeyType: HASH
+      - AttributeName: SK
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+      - IndexName: GSI_Status
+        KeySchema:
+        - AttributeName: status
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      - IndexName: GSI_SLA_V2
+        KeySchema:
+        - AttributeName: sla_state
+          KeyType: HASH
+        - AttributeName: sla_due_at
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+  TriageDLQ:
+    Type: AWS::SQS::Queue
+  TriageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - TriageDLQ
+          - Arn
+        maxReceiveCount: 3
+  LambdaBasicLoggingPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Resource: '*'
+  CreateTicketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/createTicket.handler
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: TicketTable
+          QUEUE_URL:
+            Ref: TriageQueue
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - SQSSendMessagePolicy:
+          QueueName:
+            Ref: TriageQueue
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tickets
+            Method: POST
+      CodeUri: CreateTicketFunction
+    Metadata:
+      SamResourceId: CreateTicketFunction
+  GetTicketsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/getTickets.handler
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tickets
+            Method: GET
+      CodeUri: GetTicketsFunction
+    Metadata:
+      SamResourceId: GetTicketsFunction
+  GetTicketByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/getTicketById.handler
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tickets/{id}
+            Method: GET
+      CodeUri: GetTicketByIdFunction
+    Metadata:
+      SamResourceId: GetTicketByIdFunction
+  UpdateTicketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/updateTicket.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tickets/{id}
+            Method: PUT
+      CodeUri: UpdateTicketFunction
+    Metadata:
+      SamResourceId: UpdateTicketFunction
+  DeleteTicketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/deleteTicket.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /tickets/{id}
+            Method: DELETE
+      CodeUri: DeleteTicketFunction
+    Metadata:
+      SamResourceId: DeleteTicketFunction
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/dashboard.handler
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /dashboard
+            Method: GET
+      CodeUri: DashboardFunction
+    Metadata:
+      SamResourceId: DashboardFunction
+  TriageWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/triageWorker.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - SQSPollerPolicy:
+          QueueName:
+            Ref: TriageQueue
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - TriageQueue
+              - Arn
+            BatchSize: 5
+      CodeUri: TriageWorkerFunction
+    Metadata:
+      SamResourceId: TriageWorkerFunction
+  SLAStreamFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/slaStream.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - Statement:
+          Effect: Allow
+          Action:
+          - dynamodb:DescribeStream
+          - dynamodb:GetRecords
+          - dynamodb:GetShardIterator
+          - dynamodb:ListStreams
+          Resource:
+            Fn::GetAtt:
+            - TicketTable
+            - StreamArn
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream:
+              Fn::GetAtt:
+              - TicketTable
+              - StreamArn
+            StartingPosition: LATEST
+      CodeUri: SLAStreamFunction
+    Metadata:
+      SamResourceId: SLAStreamFunction
+  SLACronFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/slaCron.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+      CodeUri: SLACronFunction
+    Metadata:
+      SamResourceId: SLACronFunction
+Outputs:
+  ApiUrl:
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
