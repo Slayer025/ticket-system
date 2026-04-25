@@ -29,10 +29,12 @@ https://oned7urh22.execute-api.ap-south-1.amazonaws.com/Prod/
 # 📦 Data Model
 
 ## Ticket Item
+
 PK: TICKET#<ticket_id>  
 SK: METADATA  
 
-Fields:
+### Fields
+
 - ticket_id
 - title
 - description
@@ -50,11 +52,13 @@ Fields:
 ---
 
 ## Event Log Item
+
 PK: TICKET#<ticket_id>  
 SK: EVENT#<timestamp>  
 
-Tracks:
-- creation
+### Tracks
+
+- ticket creation
 - triage updates
 - status changes
 - ownership changes
@@ -80,25 +84,28 @@ Tracks:
   - Category (incident / service request)
   - Priority (P1 / P2 / P3)
   - Owner (based on team rules)
-- Updates ticket in DynamoDB
+- Updates ticket state in DynamoDB
 - Writes event log entry
 
 ---
 
 ## 3. SLA Monitoring System
 - SLA duration: 8 hours from creation
-- States:
-  - ON_TRACK
-  - AT_RISK (≥80% elapsed)
-  - BREACHED (past SLA deadline)
-- Triggered via:
-  - DynamoDB Streams (real-time updates)
-  - EventBridge Scheduler (every 5 minutes)
+
+### SLA States
+- ON_TRACK
+- AT_RISK (≥80% elapsed)
+- BREACHED (past SLA deadline)
+
+### Triggered via
+- DynamoDB Streams (real-time updates)
+- EventBridge Scheduler (every 5 minutes)
 
 ---
 
 ## 4. Dashboard API
 Provides operational summary:
+
 - Open tickets
 - At-risk tickets
 - Breached tickets
@@ -127,70 +134,44 @@ Provides operational summary:
 
 ## Run Locally
 
+```bash
 cd frontend
 npm install
 npm run dev
-
----
-
-## Production Deployment Options
-
-### Option 1: Vercel (Recommended)
-- Connect GitHub repository
-- Auto-deploy React app
-- Free tier supported
-
-### Option 2: AWS S3 + CloudFront
-
+Production Deployment Options
+Option 1: Vercel (Recommended)
+Connect GitHub repository
+Auto-deploy React app
+Free tier supported
+Option 2: AWS S3 + CloudFront
 npm run build
 
 Then:
-- Upload `/dist` folder to S3 bucket
-- Enable static website hosting
-- Attach CloudFront CDN
 
----
-
-# 🔄 SLA Logic
+Upload /dist folder to S3 bucket
+Enable static website hosting
+Attach CloudFront CDN
+🔄 SLA Logic
 
 SLA Duration: 8 hours
 
-AT_RISK:
-- When 80% of SLA time is consumed
-
-BREACHED:
-- When current time exceeds sla_due_at
-
-RESOLVED:
-- Removed from SLA tracking
-
----
-
-# 📊 Dashboard Metrics
-
-- Open tickets
-- At-risk tickets
-- Breached tickets
-
----
-
-# 🚀 Deployment
-
-## Backend (AWS SAM)
-
+AT_RISK
+When progress >= 80%
+BREACHED
+When current time > sla_due_at
+RESOLVED
+Excluded from SLA tracking
+📊 Dashboard Metrics
+Open tickets (not resolved)
+At-risk tickets
+Breached tickets
+🚀 Deployment
+Backend (AWS SAM)
 sam build
 sam deploy
-
----
-
-## Clean Build (if needed)
-
+Clean Build (if needed)
 Remove-Item -Recurse -Force .aws-sam
-
----
-
-# 📁 Project Structure
-
+📁 Project Structure
 backend/
   handlers/
     createTicket.js
@@ -207,37 +188,21 @@ frontend/
     App.jsx
     main.jsx
     index.css
+🧪 Testing Approach
+API tested using Postman
+Frontend tested via UI flows
+CloudWatch logs used for debugging
+End-to-end workflow:
+Create → Triage → SLA → Update → Dashboard
 
----
+🧾 Summary
 
-# 🧪 Testing Approach
+This system demonstrates a complete serverless workflow:
 
-- API tested using Postman
-- Frontend tested via UI flows
-- CloudWatch logs for debugging
-- End-to-end workflow:
-  Create → Triage → SLA → Update → Dashboard
-
----
-
-# 🔮 Future Enhancements
-
-- Authentication (Cognito)
-- Email notifications (SES)
-- Replace Scan with GSI-based dashboard
-- Dead Letter Queue replay UI
-- Real-time WebSocket updates
-- Pagination and filtering improvements
-
----
-
-# 🧾 Summary
-
-This project demonstrates a complete serverless workflow:
-
-- Event-driven architecture using SQS and DynamoDB Streams
-- Async processing with Lambda workers
-- SLA tracking automation
-- Full ticket lifecycle management
-- React-based frontend interface
-- Cost-efficient AWS serverless design
+Event-driven architecture using SQS and DynamoDB Streams
+Asynchronous processing with Lambda workers
+SLA tracking and automation
+Full CRUD ticket lifecycle
+Operational dashboard for monitoring
+React-based frontend interface
+Cost-efficient AWS serverless design
