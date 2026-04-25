@@ -179,7 +179,7 @@ backend/
     deleteTicket.js
     dashboard.js
     triageWorker.js
-    slaStream.js
+    slaChecker.js
     slaCron.js
   template.yaml
 
