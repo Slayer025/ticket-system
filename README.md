@@ -1,136 +1,196 @@
-🎫 Serverless Ticket Triage & SLA Tracker
+# 🎫 Serverless Ticket Triage & SLA Tracker
 
-A full-stack, event-driven ticketing system built using AWS Serverless services and a React frontend.
-It automates ticket intake, async triage, SLA monitoring, and operational dashboards.
+A full-stack serverless ticketing system built using AWS Lambda, DynamoDB, SQS, EventBridge, and a React frontend.  
+It automates ticket creation, async triage, SLA monitoring, and operational visibility for support teams.
 
-🚀 Live Application
-Frontend (Local Dev)
+---
+
+# 🚀 Live System
+
+## Frontend (Local Dev)
 http://localhost:5173
-API Base URL
+
+## Backend API Base URL
 https://oned7urh22.execute-api.ap-south-1.amazonaws.com/Prod/
-🏗️ System Architecture
-☁️ AWS Services Used
-AWS Lambda (API, worker, SLA engine)
-Amazon API Gateway (REST APIs)
-Amazon DynamoDB (ticket storage + event logs)
-Amazon SQS (async triage processing)
-Amazon EventBridge Scheduler (SLA evaluation)
-Amazon CloudWatch (logging & monitoring)
-📦 Data Model
-Ticket Item
-PK: TICKET#<ticket_id>
-SK: METADATA
-Fields
-ticket_id
-title
-description
-requester
-team
-status (NEW | TRIAGED | IN_PROGRESS | RESOLVED)
-priority (P1 | P2 | P3)
-category (INCIDENT | SERVICE_REQUEST)
-owner
-sla_state (ON_TRACK | AT_RISK | BREACHED)
-sla_due_at
-created_at
-updated_at
-Event Log Item
-PK: TICKET#<ticket_id>
-SK: EVENT#<timestamp>
+
+---
+
+# ☁️ AWS Services Used
+
+- AWS Lambda (API handlers, workers, SLA processing)
+- Amazon API Gateway (REST endpoints)
+- Amazon DynamoDB (ticket storage + event history)
+- Amazon SQS (asynchronous triage queue)
+- Amazon EventBridge Scheduler (periodic SLA checks)
+- Amazon CloudWatch (logging and monitoring)
+
+---
+
+# 📦 Data Model
+
+## Ticket Item
+PK: TICKET#<ticket_id>  
+SK: METADATA  
+
+Fields:
+- ticket_id
+- title
+- description
+- requester
+- team
+- status (NEW | TRIAGED | IN_PROGRESS | RESOLVED)
+- priority (P1 | P2 | P3)
+- category (INCIDENT | SERVICE_REQUEST)
+- owner
+- sla_state (ON_TRACK | AT_RISK | BREACHED)
+- sla_due_at
+- created_at
+- updated_at
+
+---
+
+## Event Log Item
+PK: TICKET#<ticket_id>  
+SK: EVENT#<timestamp>  
 
 Tracks:
+- creation
+- triage updates
+- status changes
+- ownership changes
+- SLA transitions
+- deletion events
 
-creation
-triage
-updates
-SLA changes
-deletions
-⚙️ Core Features
-1. Ticket Intake
-Create ticket via API or UI
-Stores ticket in DynamoDB
-Sends message to SQS for async processing
-Returns ticket ID instantly
-2. Async Triage Worker
-Consumes SQS messages
-Assigns:
-Category (incident / service request)
-Priority (P1 / P2 / P3)
-Owner (based on team rules)
-Updates ticket in DynamoDB
-Logs event history
-3. SLA Monitoring System
-SLA window: 8 hours
-States:
-ON_TRACK
-AT_RISK (≥80%)
-BREACHED (past due)
-Triggered via:
-DynamoDB Streams
-EventBridge Scheduler (every 5 minutes)
-4. Dashboard API
-Open tickets
-At-risk tickets
-Breached tickets
-Aggregated operational metrics
-5. Ticket Management
-Update status (NEW → TRIAGED → IN_PROGRESS → RESOLVED)
-Reassign owner
-Delete ticket (with event logging)
-🖥️ Frontend (React + Vite)
-Features
-Create Ticket Form
-Ticket Table View
-Edit Ticket Modal (status + owner)
-SLA Dashboard Cards
-Search by Ticket ID
-Real-time refresh after actions
-Run Frontend Locally
+---
+
+# ⚙️ Core Features
+
+## 1. Ticket Intake
+- Create tickets via API or UI
+- Validates required fields
+- Stores ticket in DynamoDB
+- Sends message to SQS for async processing
+- Returns ticket ID immediately
+
+---
+
+## 2. Async Triage Worker
+- Consumes messages from SQS
+- Assigns:
+  - Category (incident / service request)
+  - Priority (P1 / P2 / P3)
+  - Owner (based on team rules)
+- Updates ticket in DynamoDB
+- Writes event log entry
+
+---
+
+## 3. SLA Monitoring System
+- SLA duration: 8 hours from creation
+- States:
+  - ON_TRACK
+  - AT_RISK (≥80% elapsed)
+  - BREACHED (past SLA deadline)
+- Triggered via:
+  - DynamoDB Streams (real-time updates)
+  - EventBridge Scheduler (every 5 minutes)
+
+---
+
+## 4. Dashboard API
+Provides operational summary:
+- Open tickets
+- At-risk tickets
+- Breached tickets
+
+---
+
+## 5. Ticket Management
+- Update ticket status
+- Reassign owner
+- Delete ticket
+- Full event history preserved
+
+---
+
+# 🖥️ Frontend (React + Vite)
+
+## Features
+- Create Ticket form
+- Ticket list view
+- Edit modal (status + owner)
+- SLA dashboard counters
+- Search by ticket ID
+- Auto-refresh after updates
+
+---
+
+## Run Locally
+
 cd frontend
 npm install
 npm run dev
-Production Deployment Options
-Option 1: Vercel (Recommended)
-Connect GitHub repo
-Auto deploy React app
-Free hosting
-No configuration needed
-Option 2: AWS S3 + CloudFront
+
+---
+
+## Production Deployment Options
+
+### Option 1: Vercel (Recommended)
+- Connect GitHub repository
+- Auto-deploy React app
+- Free tier supported
+
+### Option 2: AWS S3 + CloudFront
+
 npm run build
 
 Then:
+- Upload `/dist` folder to S3 bucket
+- Enable static website hosting
+- Attach CloudFront CDN
 
-Upload /dist folder to S3
-Enable static website hosting
-Attach CloudFront CDN
-🔄 SLA Logic
+---
+
+# 🔄 SLA Logic
+
 SLA Duration: 8 hours
 
 AT_RISK:
-  when progress >= 80%
+- When 80% of SLA time is consumed
 
 BREACHED:
-  when current time > sla_due_at
+- When current time exceeds sla_due_at
 
 RESOLVED:
-  excluded from SLA tracking
-📊 Dashboard Metrics
-Open tickets (not resolved)
-At-risk tickets
-Breached tickets
-🧪 Testing Approach
-API tested using Postman
-Frontend tested manually via UI
-Logs verified in CloudWatch
-End-to-end workflow tested via:
-Create → Triage → SLA → Update → Dashboard
-🚀 Deployment
-Backend (AWS SAM)
+- Removed from SLA tracking
+
+---
+
+# 📊 Dashboard Metrics
+
+- Open tickets
+- At-risk tickets
+- Breached tickets
+
+---
+
+# 🚀 Deployment
+
+## Backend (AWS SAM)
+
 sam build
 sam deploy
-Local Cleanup (if needed)
+
+---
+
+## Clean Build (if needed)
+
 Remove-Item -Recurse -Force .aws-sam
-📁 Project Structure
+
+---
+
+# 📁 Project Structure
+
 backend/
   handlers/
     createTicket.js
@@ -144,23 +204,40 @@ backend/
 
 frontend/
   src/
-  App.jsx
-  main.jsx
-  index.css
-🔮 Future Enhancements
-Authentication (Cognito)
-Email notifications (SES)
-GSI-based dashboard (remove Scan)
-Dead Letter Queue replay UI
-Advanced filtering and pagination
-Real-time WebSocket updates
-🧾 Summary
+    App.jsx
+    main.jsx
+    index.css
+
+---
+
+# 🧪 Testing Approach
+
+- API tested using Postman
+- Frontend tested via UI flows
+- CloudWatch logs for debugging
+- End-to-end workflow:
+  Create → Triage → SLA → Update → Dashboard
+
+---
+
+# 🔮 Future Enhancements
+
+- Authentication (Cognito)
+- Email notifications (SES)
+- Replace Scan with GSI-based dashboard
+- Dead Letter Queue replay UI
+- Real-time WebSocket updates
+- Pagination and filtering improvements
+
+---
+
+# 🧾 Summary
 
 This project demonstrates a complete serverless workflow:
 
-Event-driven architecture (SQS + Streams)
-Async processing with Lambda workers
-SLA monitoring system
-Full CRUD ticket lifecycle
-React-based operational UI
-AWS-native scalable design<img width="2483" height="2041" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/2466786d-f3e9-412a-9d7f-cd783cd5e672" />
+- Event-driven architecture using SQS and DynamoDB Streams
+- Async processing with Lambda workers
+- SLA tracking automation
+- Full ticket lifecycle management
+- React-based frontend interface
+- Cost-efficient AWS serverless design
