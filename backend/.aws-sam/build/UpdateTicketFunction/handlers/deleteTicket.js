@@ -1,11 +1,11 @@
 const {
   DynamoDBClient,
   QueryCommand,
-  BatchWriteItemCommand,
+  DeleteItemCommand,
   PutItemCommand,
 } = require("@aws-sdk/client-dynamodb");
 
-const { marshall, unmarshall } = require("@aws-sdk/util-dynamodb");
+const { unmarshall } = require("@aws-sdk/util-dynamodb");
 const crypto = require("crypto");
 
 const db = new DynamoDBClient({});
@@ -34,24 +34,20 @@ exports.handler = async (event) => {
 
     const pk = `TICKET#${id}`;
 
-    let items = [];
-    let ExclusiveStartKey;
+    // =========================
+    // QUERY
+    // =========================
+    const result = await db.send(
+      new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        KeyConditionExpression: "PK = :pk",
+        ExpressionAttributeValues: {
+          ":pk": { S: pk },   // 🔥 IMPORTANT FIX (NO marshall)
+        },
+      })
+    );
 
-    do {
-      const result = await db.send(
-        new QueryCommand({
-          TableName: process.env.TABLE_NAME,
-          KeyConditionExpression: "PK = :pk",
-          ExpressionAttributeValues: marshall({
-            ":pk": pk,
-          }),
-          ExclusiveStartKey,
-        })
-      );
-
-      if (result.Items) items.push(...result.Items);
-      ExclusiveStartKey = result.LastEvaluatedKey;
-    } while (ExclusiveStartKey);
+    const items = result.Items || [];
 
     if (!items.length) {
       return {
@@ -62,49 +58,40 @@ exports.handler = async (event) => {
     }
 
     const parsed = items.map(unmarshall);
-    const metadata = parsed.find((i) => i.SK === "METADATA");
+    const metadata = parsed.find(i => i.SK === "METADATA");
 
-    const now = new Date().toISOString();
-
-    // DELETE ALL ITEMS
-    let deleteRequests = items.map((item) => ({
-      DeleteRequest: {
-        Key: marshall({
-          PK: item.PK,
-          SK: item.SK,
-        }),
-      },
-    }));
-
-    while (deleteRequests.length) {
-      const batch = deleteRequests.splice(0, 25);
+    // =========================
+    // DELETE (FIXED)
+    // =========================
+    for (const item of parsed) {
+      if (!item.PK || !item.SK) continue;
 
       await db.send(
-        new BatchWriteItemCommand({
-          RequestItems: {
-            [process.env.TABLE_NAME]: batch,
+        new DeleteItemCommand({
+          TableName: process.env.TABLE_NAME,
+          Key: {
+            PK: { S: String(item.PK) },
+            SK: { S: String(item.SK) },
           },
         })
       );
     }
 
+    // =========================
     // EVENT LOG
+    // =========================
     await db.send(
       new PutItemCommand({
         TableName: process.env.TABLE_NAME,
-        Item: marshall({
-          PK: pk,
-          SK: `EVENT#${Date.now()}#${crypto.randomBytes(3).toString("hex")}`,
-
-          event_id: crypto.randomUUID(),
-          ticket_id: id,
-          event_type: "DELETED",
-          event_timestamp: now,
-          actor: "agent",
-
-          previous_value: metadata || null,
-          new_value: null,
-        }),
+        Item: {
+          PK: { S: pk },
+          SK: { S: `EVENT#${Date.now()}#${crypto.randomBytes(3).toString("hex")}` },
+          event_id: { S: crypto.randomUUID() },
+          ticket_id: { S: id },
+          event_type: { S: "DELETED" },
+          event_timestamp: { S: new Date().toISOString() },
+          actor: { S: "agent" },
+        },
       })
     );
 
@@ -113,6 +100,7 @@ exports.handler = async (event) => {
       headers: corsHeaders,
       body: JSON.stringify({ message: "Ticket deleted successfully" }),
     };
+
   } catch (err) {
     console.error("DELETE error:", err);
 
