@@ -31,11 +31,11 @@ title
 description
 requester
 team
-status (NEW | TRIAGED | IN_PROGRESS | RESOLVED)
-priority (P1 | P2 | P3)
-category (INCIDENT | SERVICE_REQUEST)
+status → NEW | TRIAGED | IN_PROGRESS | RESOLVED
+priority → P1 | P2 | P3
+category → INCIDENT | SERVICE_REQUEST
 owner
-sla_state (ON_TRACK | AT_RISK | BREACHED)
+sla_state → ON_TRACK | AT_RISK | BREACHED
 sla_due_at
 created_at
 updated_at
@@ -45,12 +45,12 @@ PK: TICKET#<ticket_id>
 SK: EVENT#<timestamp>
 
 Tracks
-ticket creation
-triage updates
-status changes
-ownership changes
+Ticket creation
+Triage updates
+Status changes
+Ownership changes
 SLA transitions
-deletion events
+Deletion events
 ⚙️ Core Features
 1️⃣ Ticket Intake
 Create tickets via API or UI
@@ -72,7 +72,7 @@ SLA Duration: 8 hours from ticket creation
 
 SLA States
 🟢 ON_TRACK
-🟡 AT_RISK (≥80% time elapsed)
+🟡 AT_RISK (≥ 80% time elapsed)
 🔴 BREACHED (past deadline)
 Triggered via
 DynamoDB Streams (real-time updates)
@@ -106,7 +106,7 @@ Backend (AWS SAM)
 sam build
 sam deploy
 Clean Build (if needed)
-Remove-Item -Recurse -Force .aws-sam
+rm -rf .aws-sam
 Frontend Deployment (AWS S3)
 npm run build
 
@@ -114,7 +114,7 @@ Then:
 
 Upload /dist folder to S3 bucket
 Enable static website hosting
-(Optional) Attach CloudFront CDN for better performance
+(Optional) Attach CloudFront CDN
 🔄 SLA Logic
 SLA Duration: 8 hours
 AT_RISK
