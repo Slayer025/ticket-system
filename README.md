@@ -56,8 +56,9 @@ The system uses **JWT authentication** with 3 roles:
 
 ## 🔑 Test Credentials
 
-### 👑 ADMIN
+
 ```json
+👑 ADMIN
 {
   "email": "admin@example.com",
   "password": "Admin123"
