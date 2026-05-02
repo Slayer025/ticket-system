@@ -37,11 +37,8 @@ Create tickets
 View only own tickets
 ❌ Cannot assign owners
 ❌ Cannot change priority
-❌ Limited actions on tickets
+❌ Limited actions
 🔑 Test Credentials
-
-Use these for testing roles:
-
 👑 ADMIN
 {
   "email": "admin@example.com",
@@ -66,9 +63,11 @@ Amazon EventBridge Scheduler (periodic SLA checks)
 Amazon CloudWatch (logging and monitoring)
 📦 Data Model
 🧾 Ticket Item
+
 PK: TICKET#<ticket_id>
 SK: METADATA
-Fields
+
+Fields:
 ticket_id
 title
 description
@@ -83,6 +82,7 @@ sla_due_at
 created_at
 updated_at
 🗂️ Event Log Item
+
 PK: TICKET#<ticket_id>
 SK: EVENT#<timestamp>
 
@@ -111,9 +111,10 @@ Assigns owner
 Updates DynamoDB
 Writes event logs
 3️⃣ SLA Monitoring System
-⏱ SLA Duration
-8 hours from creation
-States
+
+⏱ SLA Duration: 8 hours from creation
+
+States:
 🟢 ON_TRACK
 🟡 AT_RISK (≥ 80%)
 🔴 BREACHED (past due)
@@ -128,7 +129,7 @@ Change priority
 Delete tickets (role-based)
 Full event history tracking
 🖥️ Frontend (React + Vite)
-Features
+Features:
 JWT Login / Register
 Role-based UI rendering
 Create tickets
@@ -137,10 +138,9 @@ Dashboard counters
 Search tickets
 Live updates after actions
 🔄 SLA Logic
-SLA Duration: 8 hours
 🟡 AT_RISK → 80% time used
 🔴 BREACHED → time exceeded
-🟢 RESOLVED → excluded
+🟢 RESOLVED → excluded from SLA tracking
 📊 Dashboard Metrics
 Open tickets
 At-risk tickets
@@ -165,7 +165,9 @@ frontend/
     Register.jsx
     index.css
 🧪 Testing Flow
+
 Login → Create Ticket → Triage → SLA → Update → Dashboard
+
 🧾 Summary
 
 This system demonstrates a full event-driven serverless architecture:
