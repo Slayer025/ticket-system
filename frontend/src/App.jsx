@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
+import api, { API_PATHS } from "./api.jsx";
+import Login from "./Login.jsx";
+import Register from "./Register.jsx";
 import "./App.css";
 
-const API_URL = "https://oned7urh22.execute-api.ap-south-1.amazonaws.com/Prod/";
-
 function App() {
+  const [user, setUser] = useState(null);
+  const [showRegister, setShowRegister] = useState(false);
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [requester, setRequester] = useState("");
   const [team, setTeam] = useState("IT");
   const [urgency, setUrgency] = useState("LOW");
 
@@ -15,86 +17,176 @@ function App() {
   const [dashboard, setDashboard] = useState({});
   const [editTicket, setEditTicket] = useState(null);
   const [searchId, setSearchId] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const api = axios.create({ baseURL: API_URL });
+  // =======================
+  // SESSION LOAD
+  // =======================
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const savedUser = JSON.parse(localStorage.getItem("user"));
 
+    if (token && savedUser) {
+      setUser(savedUser);
+      refreshAll();
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  // =======================
+  // LOGOUT
+  // =======================
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+  };
+
+  // =======================
+  // API CALLS
+  // =======================
   const fetchTickets = async () => {
-    const res = await api.get("/tickets");
-    setTickets(res.data || []);
+    try {
+      const res = await api.get(API_PATHS.TICKETS);
+      setTickets(res.data || []);
+    } catch (err) {
+      console.error("Ticket fetch failed:", err);
+    }
   };
 
   const fetchDashboard = async () => {
-    const res = await api.get("/dashboard");
-    setDashboard(res.data || {});
+    try {
+      const res = await api.get(API_PATHS.DASHBOARD);
+      setDashboard(res.data || {});
+    } catch (err) {
+      console.error("Dashboard fetch failed:", err);
+    }
   };
 
   const refreshAll = async () => {
+    setLoading(true);
     await Promise.all([fetchTickets(), fetchDashboard()]);
+    setLoading(false);
   };
 
-  useEffect(() => {
-    refreshAll();
-  }, []);
-
+  // =======================
+  // CREATE TICKET
+  // =======================
   const createTicket = async () => {
-    if (!title || !description || !requester) {
+    if (!title || !description) {
       alert("Fill all fields");
       return;
     }
 
-    await api.post("/tickets", {
+    await api.post(API_PATHS.TICKETS, {
       title,
       description,
-      requester,
       team,
       urgency,
     });
 
     setTitle("");
     setDescription("");
-    setRequester("");
     refreshAll();
   };
 
-  // =========================
-  // UPDATE (NOW INCLUDES PRIORITY)
-  // =========================
+  // =======================
+  // UPDATE TICKET
+  // =======================
   const updateTicket = async () => {
-    await api.put(`/tickets/${editTicket.ticket_id}`, {
-      status: editTicket.status,
-      owner: editTicket.owner,
-      priority: editTicket.priority,   // ✅ ADDED
-    });
+    if (!editTicket) return;
 
-    setEditTicket(null);
-    refreshAll();
+    try {
+      await api.put(`${API_PATHS.TICKETS}/${editTicket.ticket_id}`, {
+        status: editTicket.status,
+        priority: editTicket.priority,
+        owner: editTicket.owner,
+      });
+
+      setEditTicket(null);
+      refreshAll();
+    } catch (err) {
+      alert(err.response?.data?.error || "Update failed");
+    }
   };
 
+  // =======================
+  // DELETE TICKET
+  // =======================
   const deleteTicket = async (id) => {
     if (!window.confirm("Delete ticket?")) return;
-    await api.delete(`/tickets/${id}`);
+    await api.delete(`${API_PATHS.TICKETS}/${id}`);
     refreshAll();
   };
 
   const filteredTickets = tickets.filter((t) =>
-    t.ticket_id.toLowerCase().includes(searchId.toLowerCase())
+    t.ticket_id?.toLowerCase().includes(searchId.toLowerCase())
   );
 
-  const badge = (v) => `badge ${v?.toLowerCase()}`;
+  // =======================
+  // AUTH SCREEN
+  // =======================
+  if (!user) {
+    return (
+      <div className="container">
+        <h1>🎫 Ticket System</h1>
 
+        {showRegister ? (
+          <>
+            <Register
+              setUser={(u) => {
+                setUser(u);
+                localStorage.setItem("user", JSON.stringify(u));
+                refreshAll(); // immediately refresh after registration/login
+              }}
+            />
+            <p onClick={() => setShowRegister(false)}>Go to Login</p>
+          </>
+        ) : (
+          <>
+            <Login
+              setUser={(u) => {
+                setUser(u);
+                localStorage.setItem("user", JSON.stringify(u));
+                refreshAll(); // immediately refresh after login
+              }}
+            />
+            <p onClick={() => setShowRegister(true)}>Create account</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // =======================
+  // MAIN UI
+  // =======================
   return (
     <div className="container">
       <h1>🎫 Ticket System</h1>
 
+      <button className="logout" onClick={logout}>
+        Logout
+      </button>
+
+      {/* DASHBOARD */}
       <div className="dashboard">
-        <div className="card">Open <h2>{dashboard.open || 0}</h2></div>
-        <div className="card warning">At Risk <h2>{dashboard.at_risk || 0}</h2></div>
-        <div className="card danger">Breached <h2>{dashboard.breached || 0}</h2></div>
+        <div className="card">
+          Open <h2>{dashboard.open || 0}</h2>
+        </div>
+        <div className="card warning">
+          At Risk <h2>{dashboard.at_risk || 0}</h2>
+        </div>
+        <div className="card danger">
+          Breached <h2>{dashboard.breached || 0}</h2>
+        </div>
       </div>
 
+      {/* SEARCH */}
       <input
         className="search"
-        placeholder="Search by Ticket ID..."
+        placeholder="Search Ticket ID..."
         value={searchId}
         onChange={(e) => setSearchId(e.target.value)}
       />
@@ -103,9 +195,17 @@ function App() {
       <div className="form">
         <h2>Create Ticket</h2>
 
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
-        <input value={requester} onChange={(e) => setRequester(e.target.value)} placeholder="Requester" />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title"
+        />
+
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description"
+        />
 
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
           <option>IT</option>
@@ -122,15 +222,60 @@ function App() {
         <button onClick={createTicket}>Create Ticket</button>
       </div>
 
-      {/* EDIT MODAL */}
+      {/* TABLE */}
+      {loading ? (
+        <p>Loading tickets...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Title</th>
+              <th>Description</th>
+              <th>Team</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Owner</th>
+              {user.role !== "USER" && <th>Actions</th>}
+            </tr>
+          </thead>
+
+          <tbody>
+            {filteredTickets.length === 0 ? (
+              <tr>
+                <td colSpan={user.role !== "USER" ? 8 : 7}>No tickets found</td>
+              </tr>
+            ) : (
+              filteredTickets.map((t) => (
+                <tr key={t.ticket_id}>
+                  <td>{t.ticket_id}</td>
+                  <td>{t.title}</td>
+                  <td>{t.description}</td>
+                  <td>{t.team}</td>
+                  <td>{t.priority}</td>
+                  <td>{t.status}</td>
+                  <td>{t.owner || "-"}</td>
+                  {user.role !== "USER" && (
+                    <td>
+                      <button onClick={() => setEditTicket(t)}>Edit</button>
+                      <button onClick={() => deleteTicket(t.ticket_id)}>
+                        Delete
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+
+      {/* MODAL */}
       {editTicket && (
         <div className="modal-overlay">
           <div className="modal">
-            <h3>Edit Ticket</h3>
+            <h2>Edit Ticket</h2>
 
-            <p><strong>ID:</strong> {editTicket.ticket_id}</p>
-
-            {/* STATUS */}
             <label>Status</label>
             <select
               value={editTicket.status}
@@ -144,16 +289,6 @@ function App() {
               <option>RESOLVED</option>
             </select>
 
-            {/* OWNER */}
-            <label>Owner</label>
-            <input
-              value={editTicket.owner}
-              onChange={(e) =>
-                setEditTicket({ ...editTicket, owner: e.target.value })
-              }
-            />
-
-            {/* PRIORITY ✅ NEW */}
             <label>Priority</label>
             <select
               value={editTicket.priority}
@@ -161,60 +296,27 @@ function App() {
                 setEditTicket({ ...editTicket, priority: e.target.value })
               }
             >
-              <option>P1</option>
-              <option>P2</option>
-              <option>P3</option>
+              <option>LOW</option>
+              <option>MEDIUM</option>
+              <option>HIGH</option>
             </select>
 
+            <label>Owner</label>
+            <input
+              value={editTicket.owner || ""}
+              onChange={(e) =>
+                setEditTicket({ ...editTicket, owner: e.target.value })
+              }
+              placeholder="Assign owner"
+            />
+
             <div className="modal-actions">
-              <button onClick={updateTicket}>Save Changes</button>
-              <button className="btn-delete" onClick={() => setEditTicket(null)}>
-                Cancel
-              </button>
+              <button onClick={updateTicket}>Save</button>
+              <button onClick={() => setEditTicket(null)}>Cancel</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* TABLE */}
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Priority</th>
-              <th>SLA</th>
-              <th>Owner</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredTickets.map((t) => (
-              <tr key={t.ticket_id}>
-                <td><code>{t.ticket_id.slice(0, 6)}</code></td>
-                <td>{t.title}</td>
-                <td><span className={badge(t.status)}>{t.status}</span></td>
-                <td>{t.priority}</td>
-                <td>{t.sla_state}</td>
-                <td>{t.owner}</td>
-                <td>{new Date(t.created_at).toLocaleDateString()}</td>
-
-                <td>
-                  <button onClick={() => setEditTicket(t)}>Edit</button>
-                  <button className="btn-delete" onClick={() => deleteTicket(t.ticket_id)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-
-        </table>
-      </div>
     </div>
   );
 }

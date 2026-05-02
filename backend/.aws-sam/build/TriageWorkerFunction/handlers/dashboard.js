@@ -3,60 +3,95 @@ const { unmarshall } = require("@aws-sdk/util-dynamodb");
 
 const db = new DynamoDBClient({});
 
+const { getUserFromEvent } = require("./auth");
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
+
+// ======================
+// HELPERS
+// ======================
+const safeStatus = (s) => s || "UNKNOWN";
+const safeSLA = (s) => s || "ON_TRACK";
 
 exports.handler = async (event) => {
   try {
+    // ======================
+    // CORS
+    // ======================
     if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 200, headers: corsHeaders };
+    }
+
+    // ======================
+    // AUTH
+    // ======================
+    let user;
+    try {
+      user = getUserFromEvent(event);
+    } catch (err) {
       return {
-        statusCode: 200,
+        statusCode: 401,
         headers: corsHeaders,
+        body: JSON.stringify({ error: err.message }),
       };
     }
 
     // ======================
-    // FULL SCAN (SAFE VERSION)
+    // PAGINATED SCAN (FIXED)
     // ======================
-    const result = await db.send(
-      new ScanCommand({
-        TableName: process.env.TABLE_NAME,
-      })
-    );
+    let items = [];
+    let ExclusiveStartKey;
 
-    const rawItems = result.Items || [];
-    const items = rawItems.map(unmarshall);
+    do {
+      const result = await db.send(
+        new ScanCommand({
+          TableName: process.env.TABLE_NAME,
+          ExclusiveStartKey,
+        })
+      );
 
-    // ======================
-    // FILTER ONLY TICKETS
-    // ======================
-    const tickets = items.filter(
-      (i) => i.SK === "METADATA"
-    );
+      if (result.Items) {
+        items.push(...result.Items.map(unmarshall));
+      }
 
-    // ======================
-    // SAFE DEFAULTS
-    // ======================
-    const safeStatus = (s) => s || "UNKNOWN";
-    const safeSLA = (s) => s || "ON_TRACK";
+      ExclusiveStartKey = result.LastEvaluatedKey;
+    } while (ExclusiveStartKey);
 
     // ======================
-    // SUMMARY CALCULATION
+    // FILTER TICKETS ONLY
+    // ======================
+    let tickets = items.filter((i) => i.SK === "METADATA");
+
+    // ======================
+    // ROLE-BASED FILTERING
+    // ======================
+    if (user.role === "USER") {
+      tickets = tickets.filter(
+        (t) => t.requester_id === user.user_id
+      );
+    }
+
+    // AGENT → sees all tickets (future: assigned only)
+    // ADMIN → sees all tickets
+
+    // ======================
+    // DASHBOARD STATS
     // ======================
     const summary = {
       open: tickets.filter(
         (i) => safeStatus(i.status) !== "RESOLVED"
       ).length,
 
-      breached: tickets.filter(
-        (i) => safeSLA(i.sla_state) === "BREACHED"
-      ).length,
-
       at_risk: tickets.filter(
         (i) => safeSLA(i.sla_state) === "AT_RISK"
+      ).length,
+
+      breached: tickets.filter(
+        (i) => safeSLA(i.sla_state) === "BREACHED"
       ).length,
     };
 

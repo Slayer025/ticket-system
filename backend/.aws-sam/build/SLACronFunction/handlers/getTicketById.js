@@ -1,22 +1,37 @@
-const {
-  DynamoDBClient,
-  QueryCommand,
-} = require("@aws-sdk/client-dynamodb");
-
+const { DynamoDBClient, QueryCommand } = require("@aws-sdk/client-dynamodb");
 const { unmarshall, marshall } = require("@aws-sdk/util-dynamodb");
 
 const db = new DynamoDBClient({});
 
+const { getUserFromEvent } = require("./auth");
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
 
 exports.handler = async (event) => {
   try {
+    // ======================
+    // CORS
+    // ======================
     if (event.httpMethod === "OPTIONS") {
       return { statusCode: 200, headers: corsHeaders };
+    }
+
+    // ======================
+    // AUTH
+    // ======================
+    let user;
+    try {
+      user = getUserFromEvent(event);
+    } catch (err) {
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: err.message }),
+      };
     }
 
     const id = event.pathParameters?.id;
@@ -31,44 +46,80 @@ exports.handler = async (event) => {
 
     const pk = `TICKET#${id}`;
 
-    let items = [];
-    let ExclusiveStartKey;
+    // ======================
+    // FETCH TICKET
+    // ======================
+    const result = await db.send(
+      new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        KeyConditionExpression: "PK = :pk",
+        ExpressionAttributeValues: marshall({
+          ":pk": pk,
+        }),
+      })
+    );
 
-    do {
-      const result = await db.send(
-        new QueryCommand({
-          TableName: process.env.TABLE_NAME,
-          KeyConditionExpression: "PK = :pk",
-          ExpressionAttributeValues: marshall({
-            ":pk": pk,
-          }),
-          ExclusiveStartKey,
-        })
-      );
+    const items = (result.Items || []).map(unmarshall);
 
-      if (result.Items) items.push(...result.Items);
-      ExclusiveStartKey = result.LastEvaluatedKey;
-    } while (ExclusiveStartKey);
+    const metadata = items.find((i) => i.SK === "METADATA");
 
-    const parsed = items.map(unmarshall);
+    if (!metadata) {
+      return {
+        statusCode: 404,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Ticket not found" }),
+      };
+    }
 
-    const metadata = parsed.find((i) => i.SK === "METADATA");
+    // ======================
+    // ACCESS CONTROL
+    // ======================
+    const isOwner = metadata.requester_id === user.user_id;
+    const isAdmin = user.role === "ADMIN";
+    const isAgent = user.role === "AGENT";
 
-    const events = parsed
+    // RULE:
+    // USER → only own ticket
+    // AGENT → all tickets (view only)
+    // ADMIN → all tickets
+
+    if (!isOwner && !isAdmin && !isAgent) {
+      return {
+        statusCode: 403,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: "Forbidden" }),
+      };
+    }
+
+    // Optional future rule (recommended later):
+    // if (isAgent && metadata.status === "RESOLVED") restrict view
+
+    // ======================
+    // EVENTS
+    // ======================
+    const events = items
       .filter((i) => i.SK.startsWith("EVENT#"))
       .sort((a, b) => b.SK.localeCompare(a.SK));
 
+    // ======================
+    // RESPONSE
+    // ======================
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify({
-        ticket: metadata || null,
+        ticket: metadata,
         events,
       }),
     };
   } catch (err) {
+    console.error("GET BY ID ERROR:", err);
+
     return {
-      statusCode: 500,
+      statusCode:
+        err.message === "Unauthorized" || err.message === "Invalid token"
+          ? 401
+          : 500,
       headers: corsHeaders,
       body: JSON.stringify({ error: err.message }),
     };

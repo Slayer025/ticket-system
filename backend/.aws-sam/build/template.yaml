@@ -10,10 +10,11 @@ Globals:
       Variables:
         TABLE_NAME:
           Ref: TicketTable
+        JWT_SECRET: dev_secret
   Api:
     Cors:
       AllowMethods: '''GET,POST,PUT,DELETE,OPTIONS'''
-      AllowHeaders: '''Content-Type'''
+      AllowHeaders: '''Content-Type,Authorization,authorization'''
       AllowOrigin: '''*'''
 Resources:
   TicketTable:
@@ -34,6 +35,12 @@ Resources:
         AttributeType: S
       - AttributeName: sla_due_at
         AttributeType: S
+      - AttributeName: email
+        AttributeType: S
+      - AttributeName: requester_id
+        AttributeType: S
+      - AttributeName: owner
+        AttributeType: S
       KeySchema:
       - AttributeName: PK
         KeyType: HASH
@@ -52,6 +59,24 @@ Resources:
           KeyType: HASH
         - AttributeName: sla_due_at
           KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      - IndexName: EmailIndex
+        KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      - IndexName: GSI_Requester
+        KeySchema:
+        - AttributeName: requester_id
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      - IndexName: GSI_Owner
+        KeySchema:
+        - AttributeName: owner
+          KeyType: HASH
         Projection:
           ProjectionType: ALL
   TriageDLQ:
@@ -78,14 +103,48 @@ Resources:
           - logs:CreateLogStream
           - logs:PutLogEvents
           Resource: '*'
+  RegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/authRegister.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/register
+            Method: POST
+      CodeUri: RegisterFunction
+    Metadata:
+      SamResourceId: RegisterFunction
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/authLogin.handler
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName:
+            Ref: TicketTable
+      - Ref: LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/login
+            Method: POST
+      CodeUri: LoginFunction
+    Metadata:
+      SamResourceId: LoginFunction
   CreateTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/createTicket.handler
       Environment:
         Variables:
-          TABLE_NAME:
-            Ref: TicketTable
           QUEUE_URL:
             Ref: TriageQueue
       Policies:

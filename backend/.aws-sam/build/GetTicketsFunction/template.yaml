@@ -10,18 +10,19 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref TicketTable
+        JWT_SECRET: dev_secret
 
   Api:
     Cors:
       AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-      AllowHeaders: "'Content-Type'"
+      AllowHeaders: "'Content-Type,Authorization,authorization'"
       AllowOrigin: "'*'"
 
 Resources:
 
-# ======================
-# DYNAMODB
-# ======================
+  # ======================
+  # DYNAMODB TABLE
+  # ======================
   TicketTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -41,6 +42,12 @@ Resources:
         - AttributeName: sla_state
           AttributeType: S
         - AttributeName: sla_due_at
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: requester_id
+          AttributeType: S
+        - AttributeName: owner
           AttributeType: S
 
       KeySchema:
@@ -66,9 +73,30 @@ Resources:
           Projection:
             ProjectionType: ALL
 
-# ======================
-# SQS
-# ======================
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+        - IndexName: GSI_Requester
+          KeySchema:
+            - AttributeName: requester_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+        - IndexName: GSI_Owner
+          KeySchema:
+            - AttributeName: owner
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # ======================
+  # SQS
+  # ======================
   TriageDLQ:
     Type: AWS::SQS::Queue
 
@@ -80,9 +108,9 @@ Resources:
         deadLetterTargetArn: !GetAtt TriageDLQ.Arn
         maxReceiveCount: 3
 
-# ======================
-# LOGGING POLICY
-# ======================
+  # ======================
+  # LOGGING POLICY
+  # ======================
   LambdaBasicLoggingPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -96,25 +124,54 @@ Resources:
               - logs:PutLogEvents
             Resource: "*"
 
-# ======================
-# CREATE TICKET (FIXED)
-# ======================
+  # ======================
+  # AUTH
+  # ======================
+  RegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/authRegister.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TicketTable
+        - !Ref LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/register
+            Method: POST
+
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers/authLogin.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TicketTable
+        - !Ref LambdaBasicLoggingPolicy
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /auth/login
+            Method: POST
+
+  # ======================
+  # CREATE TICKET
+  # ======================
   CreateTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers/createTicket.handler
       Environment:
         Variables:
-          TABLE_NAME: !Ref TicketTable
-          QUEUE_URL: !Ref TriageQueue   # ✅ correct
+          QUEUE_URL: !Ref TriageQueue
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TicketTable
-
-        # ✅ FIXED (was wrong before)
         - SQSSendMessagePolicy:
             QueueName: !Ref TriageQueue
-
         - !Ref LambdaBasicLoggingPolicy
       Events:
         Api:
@@ -123,9 +180,9 @@ Resources:
             Path: /tickets
             Method: POST
 
-# ======================
-# GET ALL TICKETS
-# ======================
+  # ======================
+  # GET ALL
+  # ======================
   GetTicketsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -141,9 +198,9 @@ Resources:
             Path: /tickets
             Method: GET
 
-# ======================
-# GET BY ID
-# ======================
+  # ======================
+  # GET BY ID
+  # ======================
   GetTicketByIdFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -159,9 +216,9 @@ Resources:
             Path: /tickets/{id}
             Method: GET
 
-# ======================
-# UPDATE
-# ======================
+  # ======================
+  # UPDATE
+  # ======================
   UpdateTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -177,9 +234,9 @@ Resources:
             Path: /tickets/{id}
             Method: PUT
 
-# ======================
-# DELETE
-# ======================
+  # ======================
+  # DELETE
+  # ======================
   DeleteTicketFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -195,9 +252,9 @@ Resources:
             Path: /tickets/{id}
             Method: DELETE
 
-# ======================
-# DASHBOARD
-# ======================
+  # ======================
+  # DASHBOARD
+  # ======================
   DashboardFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -213,9 +270,9 @@ Resources:
             Path: /dashboard
             Method: GET
 
-# ======================
-# SQS WORKER (FIXED)
-# ======================
+  # ======================
+  # SQS WORKER
+  # ======================
   TriageWorkerFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -223,11 +280,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TicketTable
-
-        # ✅ FIXED (was wrong before)
         - SQSPollerPolicy:
             QueueName: !Ref TriageQueue
-
         - !Ref LambdaBasicLoggingPolicy
       Events:
         Queue:
@@ -236,9 +290,9 @@ Resources:
             Queue: !GetAtt TriageQueue.Arn
             BatchSize: 5
 
-# ======================
-# DYNAMODB STREAM
-# ======================
+  # ======================
+  # STREAM
+  # ======================
   SLAStreamFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -246,7 +300,6 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TicketTable
-
         - Statement:
             Effect: Allow
             Action:
@@ -255,9 +308,7 @@ Resources:
               - dynamodb:GetShardIterator
               - dynamodb:ListStreams
             Resource: !GetAtt TicketTable.StreamArn
-
         - !Ref LambdaBasicLoggingPolicy
-
       Events:
         Stream:
           Type: DynamoDB
@@ -265,9 +316,9 @@ Resources:
             Stream: !GetAtt TicketTable.StreamArn
             StartingPosition: LATEST
 
-# ======================
-# CRON (SLA CHECK)
-# ======================
+  # ======================
+  # CRON
+  # ======================
   SLACronFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -282,9 +333,6 @@ Resources:
           Properties:
             Schedule: rate(5 minutes)
 
-# ======================
-# OUTPUT
-# ======================
 Outputs:
   ApiUrl:
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

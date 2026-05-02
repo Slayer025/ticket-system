@@ -10,14 +10,16 @@ const crypto = require("crypto");
 
 const db = new DynamoDBClient({});
 
-const isAtRisk = (dueAt) => {
+// ✅ FIXED: dynamic SLA calculation
+const isAtRisk = (createdAt, dueAt) => {
   const now = Date.now();
   const due = new Date(dueAt).getTime();
+  const created = new Date(createdAt).getTime();
 
-  const total = 8 * 60 * 60 * 1000;
-  const elapsed = now - (due - total);
+  if (!due || !created || due <= created) return false;
 
-  return elapsed / total >= 0.8;
+  const progress = (now - created) / (due - created);
+  return progress >= 0.8;
 };
 
 exports.handler = async () => {
@@ -39,53 +41,81 @@ exports.handler = async () => {
     );
 
     for (const item of result.Items || []) {
-      const t = unmarshall(item);
+      try {
+        const t = unmarshall(item);
 
-      const now = Date.now();
-      const due = new Date(t.sla_due_at).getTime();
+        // =========================
+        // 🚫 NEVER TOUCH RESOLVED
+        // =========================
+        if (t.status === "RESOLVED") continue;
 
-      let newState = null;
+        if (!t.sla_due_at || !t.created_at) continue;
 
-      if (now > due) {
-        newState = "BREACHED";
-      } else if (isAtRisk(t.sla_due_at)) {
-        newState = "AT_RISK";
+        const now = Date.now();
+        const due = new Date(t.sla_due_at).getTime();
+
+        let newState = null;
+        let eventType = null;
+
+        if (now > due) {
+          newState = "BREACHED";
+          eventType = "SLA_BREACHED";
+        } else if (isAtRisk(t.created_at, t.sla_due_at)) {
+          newState = "AT_RISK";
+          eventType = "SLA_AT_RISK";
+        }
+
+        // =========================
+        // 🛑 SKIP IF NO CHANGE
+        // =========================
+        if (!newState) continue;
+        if (t.sla_state === newState) continue;
+        if (t.sla_state === "BREACHED") continue; // extra guard
+
+        // =========================
+        // UPDATE
+        // =========================
+        await db.send(
+          new UpdateItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Key: marshall({
+              PK: t.PK,
+              SK: t.SK,
+            }),
+            UpdateExpression: "SET sla_state = :s, updated_at = :u",
+            ExpressionAttributeValues: marshall({
+              ":s": newState,
+              ":u": nowIso,
+            }),
+          })
+        );
+
+        // =========================
+        // EVENT LOG
+        // =========================
+        await db.send(
+          new PutItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Item: marshall({
+              PK: t.PK,
+              SK: `EVENT#${Date.now()}#${crypto
+                .randomBytes(3)
+                .toString("hex")}`,
+
+              event_id: crypto.randomUUID(),
+              ticket_id: t.ticket_id,
+              event_type: eventType,
+              event_timestamp: nowIso,
+              actor: "system",
+
+              previous_value: { sla_state: t.sla_state },
+              new_value: { sla_state: newState },
+            }),
+          })
+        );
+      } catch (err) {
+        console.error("CRON ITEM ERROR:", err);
       }
-
-      if (!newState) continue;
-
-      await db.send(
-        new UpdateItemCommand({
-          TableName: process.env.TABLE_NAME,
-          Key: marshall({
-            PK: t.PK,
-            SK: t.SK,
-          }),
-          UpdateExpression: "SET sla_state = :s, updated_at = :u",
-          ExpressionAttributeValues: marshall({
-            ":s": newState,
-            ":u": nowIso,
-          }),
-        })
-      );
-
-      await db.send(
-        new PutItemCommand({
-          TableName: process.env.TABLE_NAME,
-          Item: marshall({
-            PK: t.PK,
-            SK: `EVENT#${Date.now()}#${crypto.randomBytes(3).toString("hex")}`,
-            event_id: crypto.randomUUID(),
-            ticket_id: t.ticket_id,
-            event_type:
-              newState === "AT_RISK" ? "SLA_AT_RISK" : "SLA_BREACHED",
-            event_timestamp: nowIso,
-            actor: "system",
-            previous_value: { sla_state: t.sla_state },
-            new_value: { sla_state: newState },
-          }),
-        })
-      );
     }
 
     lastKey = result.LastEvaluatedKey;

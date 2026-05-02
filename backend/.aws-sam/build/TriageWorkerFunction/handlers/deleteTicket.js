@@ -5,21 +5,54 @@ const {
   PutItemCommand,
 } = require("@aws-sdk/client-dynamodb");
 
-const { unmarshall } = require("@aws-sdk/util-dynamodb");
+const { unmarshall, marshall } = require("@aws-sdk/util-dynamodb");
 const crypto = require("crypto");
 
 const db = new DynamoDBClient({});
 
+const { getUserFromEvent } = require("./auth");
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
 
 exports.handler = async (event) => {
   try {
+    // ======================
+    // CORS
+    // ======================
     if (event.httpMethod === "OPTIONS") {
       return { statusCode: 200, headers: corsHeaders };
+    }
+
+    // ======================
+    // AUTH
+    // ======================
+    let user;
+    try {
+      user = getUserFromEvent(event);
+    } catch (err) {
+      return {
+        statusCode: 401,
+        headers: corsHeaders,
+        body: JSON.stringify({ error: err.message }),
+      };
+    }
+
+    // ======================
+    // ROLE CHECK (FIXED)
+    // ======================
+    // ADMIN + AGENT can delete
+    if (!["ADMIN", "AGENT"].includes(user.role)) {
+      return {
+        statusCode: 403,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          error: "Only ADMIN or AGENT can delete tickets",
+        }),
+      };
     }
 
     const id = event.pathParameters?.id;
@@ -34,22 +67,22 @@ exports.handler = async (event) => {
 
     const pk = `TICKET#${id}`;
 
-    // =========================
-    // QUERY
-    // =========================
+    // ======================
+    // FETCH TICKET ITEMS
+    // ======================
     const result = await db.send(
       new QueryCommand({
         TableName: process.env.TABLE_NAME,
         KeyConditionExpression: "PK = :pk",
         ExpressionAttributeValues: {
-          ":pk": { S: pk },   // 🔥 IMPORTANT FIX (NO marshall)
+          ":pk": { S: pk },   // ✅ FIXED (no marshall here)
         },
       })
     );
 
     const items = result.Items || [];
 
-    if (!items.length) {
+    if (items.length === 0) {
       return {
         statusCode: 404,
         headers: corsHeaders,
@@ -58,11 +91,10 @@ exports.handler = async (event) => {
     }
 
     const parsed = items.map(unmarshall);
-    const metadata = parsed.find(i => i.SK === "METADATA");
 
-    // =========================
-    // DELETE (FIXED)
-    // =========================
+    // ======================
+    // DELETE ALL RELATED ITEMS
+    // ======================
     for (const item of parsed) {
       if (!item.PK || !item.SK) continue;
 
@@ -70,37 +102,40 @@ exports.handler = async (event) => {
         new DeleteItemCommand({
           TableName: process.env.TABLE_NAME,
           Key: {
-            PK: { S: String(item.PK) },
-            SK: { S: String(item.SK) },
+            PK: { S: item.PK },
+            SK: { S: item.SK },
           },
         })
       );
     }
 
-    // =========================
+    const now = new Date().toISOString();
+
+    // ======================
     // EVENT LOG
-    // =========================
+    // ======================
     await db.send(
       new PutItemCommand({
         TableName: process.env.TABLE_NAME,
-        Item: {
-          PK: { S: pk },
-          SK: { S: `EVENT#${Date.now()}#${crypto.randomBytes(3).toString("hex")}` },
-          event_id: { S: crypto.randomUUID() },
-          ticket_id: { S: id },
-          event_type: { S: "DELETED" },
-          event_timestamp: { S: new Date().toISOString() },
-          actor: { S: "agent" },
-        },
+        Item: marshall({
+          PK: pk,
+          SK: `EVENT#${Date.now()}#${crypto.randomBytes(3).toString("hex")}`,
+          event_id: crypto.randomUUID(),
+          ticket_id: id,
+          event_type: "DELETED",
+          event_timestamp: now,
+          actor: user.user_id,
+        }),
       })
     );
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ message: "Ticket deleted successfully" }),
+      body: JSON.stringify({
+        message: "Ticket deleted successfully",
+      }),
     };
-
   } catch (err) {
     console.error("DELETE error:", err);
 
