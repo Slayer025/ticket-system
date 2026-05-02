@@ -10,8 +10,53 @@ http://ticket-frontend-declan.s3-website.ap-south-1.amazonaws.com/
 
 🔗 Backend API Base URL
 
-https://oned7urh22.execute-api.ap-south-1.amazonaws.com/Prod/
+https://6z6t4ghhn6.execute-api.ap-south-1.amazonaws.com/Prod/
 
+🔐 Authentication & Role-Based Access Control (RBAC)
+
+The system uses JWT authentication with 3 roles:
+
+🟥 ADMIN
+Full system access
+Update any ticket
+Assign / change owners
+Change priority
+Delete tickets
+View all tickets
+Full dashboard access
+🟧 AGENT
+Update any ticket
+Assign owners
+Change priority
+Delete tickets
+View all tickets
+Operational support access
+🟩 USER (Requester)
+Register / login
+Create tickets
+View only own tickets
+❌ Cannot assign owners
+❌ Cannot change priority
+❌ Limited actions on tickets
+🔑 Test Credentials
+
+Use these for testing roles:
+
+👑 ADMIN
+{
+  "email": "admin@example.com",
+  "password": "Admin123"
+}
+🧑‍💻 AGENT
+{
+  "email": "ss ss agent",
+  "password": "ss ss agent"
+}
+👤 USER
+{
+  "email": "ww ww user",
+  "password": "ww ww user"
+}
 ☁️ AWS Services Used
 AWS Lambda (API handlers, workers, SLA processing)
 Amazon API Gateway (REST endpoints)
@@ -21,15 +66,13 @@ Amazon EventBridge Scheduler (periodic SLA checks)
 Amazon CloudWatch (logging and monitoring)
 📦 Data Model
 🧾 Ticket Item
-
 PK: TICKET#<ticket_id>
 SK: METADATA
-
 Fields
 ticket_id
 title
 description
-requester
+requester_id
 team
 status → NEW | TRIAGED | IN_PROGRESS | RESOLVED
 priority → P1 | P2 | P3
@@ -40,11 +83,11 @@ sla_due_at
 created_at
 updated_at
 🗂️ Event Log Item
-
 PK: TICKET#<ticket_id>
 SK: EVENT#<timestamp>
 
-Tracks
+Tracks:
+
 Ticket creation
 Triage updates
 Status changes
@@ -53,84 +96,53 @@ SLA transitions
 Deletion events
 ⚙️ Core Features
 1️⃣ Ticket Intake
-Create tickets via API or UI
+Create tickets via API/UI
 Validates required fields
-Stores ticket in DynamoDB
-Sends message to SQS for async processing
-Returns ticket ID immediately
+Stores in DynamoDB
+Sends message to SQS
+Returns ticket ID instantly
 2️⃣ Async Triage Worker
-Consumes messages from SQS
-Automatically assigns:
-Category (Incident / Service Request)
-Priority (P1 / P2 / P3)
-Owner (based on team rules)
-Updates ticket in DynamoDB
-Writes event log entry
+
+Automatically:
+
+Categorizes ticket
+Assigns priority
+Assigns owner
+Updates DynamoDB
+Writes event logs
 3️⃣ SLA Monitoring System
-
-SLA Duration: 8 hours from ticket creation
-
-SLA States
+⏱ SLA Duration
+8 hours from creation
+States
 🟢 ON_TRACK
-🟡 AT_RISK (≥ 80% time elapsed)
-🔴 BREACHED (past deadline)
-Triggered via
-DynamoDB Streams (real-time updates)
-EventBridge Scheduler (every 5 minutes)
+🟡 AT_RISK (≥ 80%)
+🔴 BREACHED (past due)
 4️⃣ Dashboard API
-
-Provides operational insights:
-
 Open tickets
 At-risk tickets
 Breached tickets
 5️⃣ Ticket Management
-Update ticket status
-Reassign owner
-Delete tickets
-Full event history maintained
+Update status
+Assign owner
+Change priority
+Delete tickets (role-based)
+Full event history tracking
 🖥️ Frontend (React + Vite)
 Features
-Create Ticket form
-Ticket list view
-Edit modal (status + owner)
-SLA dashboard counters
-Search by ticket ID
-Auto-refresh after updates
-🧪 Run Locally (Optional)
-cd frontend
-npm install
-npm run dev
-🚀 Deployment
-Backend (AWS SAM)
-sam build
-sam deploy
-Clean Build (if needed)
-rm -rf .aws-sam
-Frontend Deployment (AWS S3)
-npm run build
-
-Then:
-
-Upload /dist folder to S3 bucket
-Enable static website hosting
-(Optional) Attach CloudFront CDN
+JWT Login / Register
+Role-based UI rendering
+Create tickets
+Edit tickets (admin/agent)
+Dashboard counters
+Search tickets
+Live updates after actions
 🔄 SLA Logic
 SLA Duration: 8 hours
-AT_RISK
-
-Triggered when ≥ 80% of SLA time is consumed
-
-BREACHED
-
-Triggered when current time exceeds sla_due_at
-
-RESOLVED
-
-Excluded from SLA tracking
-
+🟡 AT_RISK → 80% time used
+🔴 BREACHED → time exceeded
+🟢 RESOLVED → excluded
 📊 Dashboard Metrics
-Open tickets (not resolved)
+Open tickets
 At-risk tickets
 Breached tickets
 📁 Project Structure
@@ -148,24 +160,20 @@ backend/
 frontend/
   src/
     App.jsx
-    main.jsx
+    api.jsx
+    Login.jsx
+    Register.jsx
     index.css
-🧪 Testing Approach
-API tested using Postman
-Frontend tested via UI workflows
-CloudWatch logs used for debugging
-End-to-End Flow
-
-Create → Triage → SLA → Update → Dashboard
-
+🧪 Testing Flow
+Login → Create Ticket → Triage → SLA → Update → Dashboard
 🧾 Summary
 
-This project demonstrates a complete event-driven serverless architecture:
+This system demonstrates a full event-driven serverless architecture:
 
-Asynchronous processing using SQS
-Event-driven workflows with DynamoDB Streams
-Automated SLA tracking system
-Full ticket lifecycle management (CRUD)
-Operational dashboard for visibility
+Async processing with SQS
+DynamoDB Streams + EventBridge automation
+SLA monitoring engine
+Role-based access control (ADMIN / AGENT / USER)
+Full ticket lifecycle management
 Scalable React frontend hosted on S3
-Cost-efficient AWS-native design
+Fully AWS-native, cost-efficient design
