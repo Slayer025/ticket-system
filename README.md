@@ -1,45 +1,63 @@
-🎫 Serverless Ticket Triage & SLA Tracker
+# 🎫 Serverless Ticket Triage & SLA Tracker
 
-A full-stack serverless ticketing system built using AWS Lambda, DynamoDB, SQS, EventBridge, and a React frontend.
+A full-stack serverless ticketing system built using AWS Lambda, DynamoDB, SQS, EventBridge, and a React frontend.  
 It automates ticket creation, async triage, SLA monitoring, and operational visibility for support teams.
 
-🚀 Live System
-🌐 Frontend (AWS S3 Hosted)
+---
 
+## 🚀 Live System
+
+### 🌐 Frontend (AWS S3 Hosted)
 http://ticket-frontend-declan.s3-website.ap-south-1.amazonaws.com/
 
-🔗 Backend API Base URL
+---
 
+### 🔗 Backend API Base URL
 https://6z6t4ghhn6.execute-api.ap-south-1.amazonaws.com/Prod/
 
-🔐 Authentication & Role-Based Access Control (RBAC)
+---
 
-The system uses JWT authentication with 3 roles:
+## 🔐 Authentication & Role-Based Access Control (RBAC)
 
-🟥 ADMIN
-Full system access
-Update any ticket
-Assign / change owners
-Change priority
-Delete tickets
-View all tickets
-Full dashboard access
-🟧 AGENT
-Update any ticket
-Assign owners
-Change priority
-Delete tickets
-View all tickets
-Operational support access
-🟩 USER (Requester)
-Register / login
-Create tickets
-View only own tickets
-❌ Cannot assign owners
-❌ Cannot change priority
-❌ Limited actions
-🔑 Test Credentials
-👑 ADMIN
+The system uses **JWT authentication** with 3 roles:
+
+---
+
+### 🟥 ADMIN
+- Full system access  
+- Update any ticket  
+- Assign / change owners  
+- Change priority  
+- Delete tickets  
+- View all tickets  
+- Full dashboard access  
+
+---
+
+### 🟧 AGENT
+- Update any ticket  
+- Assign owners  
+- Change priority  
+- Delete tickets  
+- View all tickets  
+- Operational support access  
+
+---
+
+### 🟩 USER (Requester)
+- Register / login  
+- Create tickets  
+- View only own tickets  
+- ❌ Cannot assign owners  
+- ❌ Cannot change priority  
+- ❌ Limited actions  
+
+---
+
+## 🔑 Test Credentials
+
+### 👑 ADMIN
+```json
 {
   "email": "admin@example.com",
   "password": "Admin123"
@@ -68,6 +86,7 @@ PK: TICKET#<ticket_id>
 SK: METADATA
 
 Fields:
+
 ticket_id
 title
 description
@@ -115,6 +134,7 @@ Writes event logs
 ⏱ SLA Duration: 8 hours from creation
 
 States:
+
 🟢 ON_TRACK
 🟡 AT_RISK (≥ 80%)
 🔴 BREACHED (past due)
@@ -129,7 +149,7 @@ Change priority
 Delete tickets (role-based)
 Full event history tracking
 🖥️ Frontend (React + Vite)
-Features:
+Features
 JWT Login / Register
 Role-based UI rendering
 Create tickets
