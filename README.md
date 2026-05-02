@@ -49,13 +49,13 @@ Use these for testing roles:
 }
 🧑‍💻 AGENT
 {
-  "email": "ss ss agent",
-  "password": "ss ss agent"
+  "email": "ss",
+  "password": "ss"
 }
 👤 USER
 {
-  "email": "ww ww user",
-  "password": "ww ww user"
+  "email": "ww",
+  "password": "ww"
 }
 ☁️ AWS Services Used
 AWS Lambda (API handlers, workers, SLA processing)
